@@ -15,13 +15,116 @@
         const exportButton = document.getElementById('exportQuotes');
         const importFileInput = document.getElementById('importFile');
         const categoryFilter = document.getElementById('categoryFilter');
+        const syncStatus = document.getElementById('syncStatus');
+
+        // --- WEB STORAGE KEYS ---
+        const LOCAL_KEY = 'quoteGeneratorQuotes';
+        const SERVER_SIM_KEY = 'mockServerData'; // Key to simulate the server's authoritative data
+
+        // --- SERVER SIMULATION & SYNC (Task 4) ---
+
+        /**
+         * Simulates initializing the server data store if it doesn't exist.
+         */
+        function initializeServerData() {
+            if (!localStorage.getItem(SERVER_SIM_KEY)) {
+                // Server starts with the initial default quotes
+                localStorage.setItem(SERVER_SIM_KEY, JSON.stringify(defaultQuotes));
+            }
+        }
+
+        /**
+         * Helper to update the sync status UI element.
+         */
+        function updateSyncStatus(message, colorClass = 'bg-yellow-100 text-yellow-800') {
+            syncStatus.textContent = message;
+            syncStatus.className = `mt-2 mb-4 p-3 text-sm font-medium text-center rounded-lg transition-colors duration-300 ${colorClass}`;
+        }
+
+        /**
+         * Simulates pushing local data to the server. Called after a local successful write (addQuote).
+         */
+        function pushToServer(data) {
+            updateSyncStatus('Pushing local changes to server...', 'bg-blue-100 text-blue-800');
+            // Simulate network latency
+            setTimeout(() => {
+                try {
+                    // Update the simulated server data with the current local state
+                    localStorage.setItem(SERVER_SIM_KEY, JSON.stringify(data));
+                    updateSyncStatus(`Local changes pushed. Last Synced: ${new Date().toLocaleTimeString()}`, 'bg-green-100 text-green-800');
+                } catch (e) {
+                    console.error("Error pushing to simulated server:", e);
+                    updateSyncStatus('Error pushing data.', 'bg-red-100 text-red-800');
+                }
+            }, 1000); // 1 second delay simulation
+        }
+
+        /**
+         * Implements Data Syncing and Conflict Resolution (Server Precedence).
+         */
+        function syncData() {
+            updateSyncStatus('Syncing with server...', 'bg-yellow-100 text-yellow-800');
+
+            setTimeout(() => { // Simulate network latency
+                try {
+                    const serverQuotesString = localStorage.getItem(SERVER_SIM_KEY);
+                    const localQuotesString = localStorage.getItem(LOCAL_KEY);
+
+                    if (!serverQuotesString) {
+                        // This shouldn't happen if initialization ran, but safe to check
+                        updateSyncStatus('Error: Server data is missing.', 'bg-red-100 text-red-800');
+                        return;
+                    }
+
+                    // Conflict Check (Server Precedence Strategy)
+                    if (serverQuotesString !== localQuotesString) {
+                        const serverQuotes = JSON.parse(serverQuotesString);
+
+                        if (serverQuotes.length > quotes.length) {
+                             // Case 1: Server data is different and longer (new data arrived)
+                             // This is a conflict/update where server wins
+                            quotes = serverQuotes;
+                            saveQuotes(false); // Save the new server data locally without triggering another push
+                            populateCategories(); // Update UI
+                            showRandomQuote(); // Show new quote based on new data
+
+                            updateSyncStatus(`Conflict resolved: Server data downloaded (${serverQuotes.length} quotes).`, 'bg-red-100 text-red-800');
+                            return;
+                        } else if (serverQuotesString !== localQuotesString) {
+                            // Case 2: Data is simply different (local edit, or server rollback)
+                            // For simplicity, we assume server is always the source of truth and pull it.
+                            quotes = serverQuotes;
+                            saveQuotes(false); // Save the new server data locally
+                            populateCategories(); // Update UI
+                            showRandomQuote(); // Show new quote based on new data
+
+                            updateSyncStatus(`Data updated from server: State changed and pulled.`, 'bg-red-100 text-red-800');
+                            return;
+                        }
+                    } 
+                    
+                    updateSyncStatus(`Sync successful. Last Checked: ${new Date().toLocaleTimeString()}`, 'bg-green-100 text-green-800');
+
+                } catch (e) {
+                    console.error("Error during data sync:", e);
+                    updateSyncStatus('Sync failed due to an error.', 'bg-red-100 text-red-800');
+                }
+            }, 1500); // 1.5 second delay simulation
+        }
 
 
-        // --- WEB STORAGE HELPERS (Task 1 & 2 Persistence) ---
+        // --- WEB STORAGE HELPERS (Task 1, 2, 3 Persistence) ---
 
-        function saveQuotes() {
+        /**
+         * Saves quotes to local storage, optionally pushing to the server.
+         * @param {boolean} shouldPushToServer - If true, calls pushToServer after saving locally.
+         */
+        function saveQuotes(shouldPushToServer = true) {
             try {
-                localStorage.setItem('quoteGeneratorQuotes', JSON.stringify(quotes));
+                localStorage.setItem(LOCAL_KEY, JSON.stringify(quotes));
+                if (shouldPushToServer) {
+                    pushToServer(quotes);
+                }
             } catch (e) {
                 console.error("Error saving to Local Storage:", e);
             }
@@ -29,12 +132,12 @@
 
         function loadQuotes() {
             try {
-                const storedQuotes = localStorage.getItem('quoteGeneratorQuotes');
+                const storedQuotes = localStorage.getItem(LOCAL_KEY);
                 if (storedQuotes) {
                     quotes = JSON.parse(storedQuotes);
                 } else {
                     quotes = defaultQuotes;
-                    saveQuotes();
+                    saveQuotes(false); // Save initial state locally without pushing
                 }
             } catch (e) {
                 console.error("Error loading from Local Storage or parsing JSON:", e);
@@ -65,18 +168,10 @@
 
         // --- CORE FUNCTIONALITY (Task 3: Filtering) ---
 
-        /**
-         * Populates the category filter dropdown with unique categories from the quotes array.
-         * Called on initialization and whenever a new quote (with a new category) is added.
-         */
         function populateCategories() {
-            // 1. Get unique categories
             const categories = quotes.map(q => q.category.trim());
-            // Use Set for uniqueness, and filter out any empty strings that might result
             const uniqueCategories = [...new Set(categories.filter(c => c))].sort();
 
-            // 2. Clear and re-add options
-            // Keep the 'All Categories' option
             categoryFilter.innerHTML = '<option value="all">All Categories</option>';
 
             uniqueCategories.forEach(category => {
@@ -86,40 +181,26 @@
                 categoryFilter.appendChild(option);
             });
 
-            // 3. Restore the last selected filter state after populating
             restoreFilterState();
         }
 
-        /**
-         * Saves the currently selected filter to Local Storage and triggers a display update.
-         * This function is called by the onchange event of the filter dropdown.
-         */
         function filterQuotes() {
             const selectedCategory = categoryFilter.value;
-            // Step 2: Remember the Last Selected Filter (Local Storage)
             localStorage.setItem('selectedCategoryFilter', selectedCategory);
-            
-            // Show a random quote from the newly filtered list
             showRandomQuote();
         }
 
-        /**
-         * Restores the filter selection from Local Storage on page load.
-         */
         function restoreFilterState() {
             const savedCategory = localStorage.getItem('selectedCategoryFilter');
 
-            // Only restore if the saved category exists in the current options list
             const optionExists = Array.from(categoryFilter.options).some(opt => opt.value === savedCategory);
 
             if (savedCategory && optionExists) {
                 categoryFilter.value = savedCategory;
             } else {
                 categoryFilter.value = 'all';
-                // Also clear storage if it was a custom category that was imported/deleted
                 localStorage.removeItem('selectedCategoryFilter'); 
             }
-            // Trigger an initial filtered display
             showRandomQuote();
         }
 
@@ -127,24 +208,18 @@
         // --- DISPLAY & USER INTERACTION ---
 
         function displayQuote(quote) {
-             // Clear any previous session message
              quoteDisplay.innerHTML = ''; 
 
             quoteDisplay.innerHTML = `
                 <p class="text-xl font-medium text-gray-800 italic mb-2">"${quote.text}"</p>
                 <p class="text-sm text-blue-600 font-semibold">— Category: ${quote.category}</p>
             `;
-            // Save the displayed quote's text to session storage
             saveLastViewedQuote(quote.text); 
         }
 
-        /**
-         * Selects a random quote, respecting the currently active category filter.
-         */
         function showRandomQuote() {
             const selectedCategory = categoryFilter.value;
             
-            // 1. Determine which quotes to draw from based on the filter
             const filteredQuotes = (selectedCategory === 'all' || !selectedCategory) 
                 ? quotes
                 : quotes.filter(q => q.category.trim() === selectedCategory.trim());
@@ -154,7 +229,6 @@
                  return;
             }
             
-            // 2. Pick and display a random quote from the filtered list
             const randomIndex = Math.floor(Math.random() * filteredQuotes.length);
             const quote = filteredQuotes[randomIndex];
             displayQuote(quote);
@@ -203,10 +277,10 @@
             const newQuote = { text: newText, category: newCategory };
             quotes.push(newQuote);
 
-            // 1. Save the updated array to Local Storage
-            saveQuotes();
+            // 1. Save the updated array to Local Storage (and push to server)
+            saveQuotes(true); 
             
-            // 2. Step 3: Update the categories dropdown if this is a new category
+            // 2. Update the categories dropdown
             populateCategories(); 
 
             // Clear the input fields
@@ -217,7 +291,7 @@
             showRandomQuote();
         }
 
-        // --- JSON IMPORT/EXPORT FUNCTIONS (from previous task) ---
+        // --- JSON IMPORT/EXPORT FUNCTIONS ---
 
         function exportToJson() {
             const jsonString = JSON.stringify(quotes, null, 2); 
@@ -234,8 +308,7 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
-            // Use a simple alert replacement for feedback
-            quoteDisplay.innerHTML = `<p class="text-xl font-semibold text-green-700">Quotes exported successfully!</p>`;
+            updateSyncStatus("Quotes exported successfully! (Local Data)", 'bg-purple-100 text-purple-800');
         }
 
         function importFromJsonFile(event) {
@@ -254,9 +327,10 @@
                     }
 
                     quotes = importedQuotes;
-                    saveQuotes();
                     
-                    // CRITICAL: Repopulate categories after import, as the list might have changed
+                    // Save and push the newly imported data
+                    saveQuotes(true); 
+                    
                     populateCategories(); 
                     
                     event.target.value = '';
@@ -274,20 +348,27 @@
         // --- INITIALIZATION ---
 
         function initialize() {
-            // 1. Load data from local storage (must run first)
+            // 1. Initialize Server's Mock Data Store
+            initializeServerData(); 
+            
+            // 2. Load Local Data
             loadQuotes(); 
 
-            // 2. Populate the categories dropdown based on loaded data
+            // 3. Populate Categories and Restore Filter State
             populateCategories(); 
-            // NOTE: populateCategories automatically calls restoreFilterState which calls showRandomQuote
 
-            // 3. Attach listeners
+            // 4. Attach Listeners
             newQuoteButton.addEventListener('click', showRandomQuote);
             exportButton.addEventListener('click', exportToJson);
             importFileInput.addEventListener('change', importFromJsonFile);
 
-            // 4. Dynamically generate the "Add Quote" form
+            // 5. Dynamically generate the "Add Quote" form
             createAddQuoteForm();
+            
+            // 6. Start the periodic sync check (every 5 seconds)
+            setInterval(syncData, 5000); 
+            
+            updateSyncStatus('Ready. Periodic sync started.', 'bg-green-100 text-green-800');
         }
 
         // Run initialization when the page is ready
