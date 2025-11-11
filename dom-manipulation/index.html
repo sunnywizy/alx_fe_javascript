@@ -9,19 +9,34 @@
 </head>
 <body class="p-6">
     <div class="max-w-xl w-full bg-white p-8 rounded-xl shadow-2xl border border-gray-100">
-        <h1 class="text-3xl font-bold text-gray-800 text-center mb-6">Dynamic Quote Generator</h1>
+        <h1 class="text-3xl font-bold text-gray-800 text-center mb-6">Dynamic Quote Generator (Conflict Resolution Demo)</h1>
 
-        <!-- START STEP 1: CATEGORY FILTER DROPDOWN -->
+        <!-- Sync Status & Conflict Resolution UI -->
+        <div id="syncStatus" class="mt-2 mb-4 p-3 text-sm font-medium text-center rounded-lg transition-colors duration-300 bg-yellow-100 text-yellow-800">
+            Initializing sync...
+        </div>
+
+        <div id="conflictResolutionUI" class="hidden mb-6 p-4 border-2 border-red-500 rounded-lg bg-red-50 shadow-lg">
+            <p class="font-bold text-red-700 mb-3">⚠️ Conflict Detected!</p>
+            <p class="text-sm text-red-600 mb-3">The server has been updated since your last sync. How would you like to resolve the difference?</p>
+            <div class="flex space-x-3">
+                <button onclick="resolveConflict('server')" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-lg transition duration-300 text-xs">
+                    Accept Server Version
+                </button>
+                <button onclick="resolveConflict('local')" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 rounded-lg transition duration-300 text-xs">
+                    Overwrite Server (Push Local)
+                </button>
+            </div>
+        </div>
+        
+        <!-- Category Filter Dropdown -->
         <div class="mb-6 p-4 bg-gray-50 rounded-lg shadow-inner border border-gray-100">
             <label for="categoryFilter" class="block text-sm font-medium text-gray-700 mb-2">Filter Quotes by Category:</label>
-            <!-- The onchange event calls the filtering and state-saving function -->
             <select id="categoryFilter" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" onchange="filterQuotes()">
                 <option value="all">All Categories</option>
                 <!-- Dynamically populated categories will go here -->
             </select>
         </div>
-        <!-- END STEP 1: CATEGORY FILTER DROPDOWN -->
-
 
         <!-- Area where the quote will be displayed -->
         <div id="quoteDisplay" class="text-center p-6 bg-blue-50 border-l-4 border-blue-500 rounded-lg mb-8 transition-all duration-300 min-h-[100px] flex flex-col justify-center">
@@ -39,16 +54,14 @@
             <!-- The form will be injected here by JavaScript -->
         </div>
 
-        <!-- Container for JSON Import/Export Tools (from previous task) -->
+        <!-- JSON Import/Export Tools -->
         <div id="jsonTools" class="mt-8 border-t border-dashed pt-6 flex flex-col space-y-4">
-            <h2 class="text-xl font-semibold text-gray-700">Data Management (Local Storage & JSON)</h2>
+            <h2 class="text-xl font-semibold text-gray-700">Data Management</h2>
             
-            <!-- Export Button -->
             <button id="exportQuotes" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-300">
-                Export Quotes (JSON)
+                Export Local Quotes (JSON)
             </button>
             
-            <!-- Import File Input -->
             <div class="flex-1">
                 <label for="importFile" class="block text-center text-sm font-medium text-gray-700 mb-2">Import Quotes (JSON File)</label>
                 <input type="file" id="importFile" accept=".json" class="w-full text-sm text-gray-500

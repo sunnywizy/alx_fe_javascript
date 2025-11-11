@@ -16,6 +16,7 @@
         const importFileInput = document.getElementById('importFile');
         const categoryFilter = document.getElementById('categoryFilter');
         const syncStatus = document.getElementById('syncStatus');
+        const conflictResolutionUI = document.getElementById('conflictResolutionUI');
 
         // --- WEB STORAGE KEYS ---
         const LOCAL_KEY = 'quoteGeneratorQuotes';
@@ -39,10 +40,11 @@
         function updateSyncStatus(message, colorClass = 'bg-yellow-100 text-yellow-800') {
             syncStatus.textContent = message;
             syncStatus.className = `mt-2 mb-4 p-3 text-sm font-medium text-center rounded-lg transition-colors duration-300 ${colorClass}`;
+            conflictResolutionUI.classList.add('hidden');
         }
 
         /**
-         * Simulates pushing local data to the server. Called after a local successful write (addQuote).
+         * Simulates pushing local data to the server. Called after a manual push or local update.
          */
         function pushToServer(data) {
             updateSyncStatus('Pushing local changes to server...', 'bg-blue-100 text-blue-800');
@@ -51,16 +53,16 @@
                 try {
                     // Update the simulated server data with the current local state
                     localStorage.setItem(SERVER_SIM_KEY, JSON.stringify(data));
-                    updateSyncStatus(`Local changes pushed. Last Synced: ${new Date().toLocaleTimeString()}`, 'bg-green-100 text-green-800');
+                    updateSyncStatus(`Changes pushed to server. Last Synced: ${new Date().toLocaleTimeString()}`, 'bg-green-100 text-green-800');
                 } catch (e) {
                     console.error("Error pushing to simulated server:", e);
-                    updateSyncStatus('Error pushing data.', 'bg-red-100 text-red-800');
+                    updateSyncStatus('Error pushing data to server.', 'bg-red-100 text-red-800');
                 }
             }, 1000); // 1 second delay simulation
         }
 
         /**
-         * Implements Data Syncing and Conflict Resolution (Server Precedence).
+         * Implements Data Syncing and checks for conflicts.
          */
         function syncData() {
             updateSyncStatus('Syncing with server...', 'bg-yellow-100 text-yellow-800');
@@ -71,36 +73,18 @@
                     const localQuotesString = localStorage.getItem(LOCAL_KEY);
 
                     if (!serverQuotesString) {
-                        // This shouldn't happen if initialization ran, but safe to check
                         updateSyncStatus('Error: Server data is missing.', 'bg-red-100 text-red-800');
                         return;
                     }
 
-                    // Conflict Check (Server Precedence Strategy)
+                    // Conflict Check (Data differs)
                     if (serverQuotesString !== localQuotesString) {
-                        const serverQuotes = JSON.parse(serverQuotesString);
+                        // Conflict detected! Prompt user for manual resolution
+                        syncStatus.className = 'mt-2 mb-4 p-3 text-sm font-medium text-center rounded-lg bg-red-100 text-red-800';
+                        syncStatus.textContent = 'CONFLICT: Manual resolution required.';
+                        conflictResolutionUI.classList.remove('hidden');
+                        return;
 
-                        if (serverQuotes.length > quotes.length) {
-                             // Case 1: Server data is different and longer (new data arrived)
-                             // This is a conflict/update where server wins
-                            quotes = serverQuotes;
-                            saveQuotes(false); // Save the new server data locally without triggering another push
-                            populateCategories(); // Update UI
-                            showRandomQuote(); // Show new quote based on new data
-
-                            updateSyncStatus(`Conflict resolved: Server data downloaded (${serverQuotes.length} quotes).`, 'bg-red-100 text-red-800');
-                            return;
-                        } else if (serverQuotesString !== localQuotesString) {
-                            // Case 2: Data is simply different (local edit, or server rollback)
-                            // For simplicity, we assume server is always the source of truth and pull it.
-                            quotes = serverQuotes;
-                            saveQuotes(false); // Save the new server data locally
-                            populateCategories(); // Update UI
-                            showRandomQuote(); // Show new quote based on new data
-
-                            updateSyncStatus(`Data updated from server: State changed and pulled.`, 'bg-red-100 text-red-800');
-                            return;
-                        }
                     } 
                     
                     updateSyncStatus(`Sync successful. Last Checked: ${new Date().toLocaleTimeString()}`, 'bg-green-100 text-green-800');
@@ -111,9 +95,35 @@
                 }
             }, 1500); // 1.5 second delay simulation
         }
+        
+        /**
+         * Resolves the conflict based on user choice.
+         * @param {'server' | 'local'} precedence - Which version to keep.
+         */
+        window.resolveConflict = function(precedence) {
+            if (precedence === 'server') {
+                // Server wins: Load server data, overwrite local, and update UI
+                const serverQuotesString = localStorage.getItem(SERVER_SIM_KEY);
+                quotes = JSON.parse(serverQuotesString);
+                saveQuotes(false); // Save server data locally, DO NOT push back to server
+
+                updateSyncStatus(`Conflict resolved: Server version accepted.`, 'bg-red-100 text-red-800');
+                
+            } else if (precedence === 'local') {
+                // Local wins: Push local data to server, making it the new authority
+                pushToServer(quotes); // Push local data to the simulated server
+
+                updateSyncStatus(`Conflict resolved: Local version pushed to server.`, 'bg-red-100 text-red-800');
+            }
+
+            // After resolution, update the UI elements
+            populateCategories(); 
+            showRandomQuote();
+            conflictResolutionUI.classList.add('hidden');
+        }
 
 
-        // --- WEB STORAGE HELPERS (Task 1, 2, 3 Persistence) ---
+        // --- WEB STORAGE HELPERS ---
 
         /**
          * Saves quotes to local storage, optionally pushing to the server.
@@ -252,7 +262,7 @@
             categoryInput.className = 'p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500';
 
             const addButton = document.createElement('button');
-            addButton.textContent = 'Add Quote';
+            addButton.textContent = 'Add Quote (Auto-sync)';
             addButton.className = 'bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg shadow-md transition duration-300';
             
             addButton.addEventListener('click', addQuote);
@@ -368,7 +378,7 @@
             // 6. Start the periodic sync check (every 5 seconds)
             setInterval(syncData, 5000); 
             
-            updateSyncStatus('Ready. Periodic sync started.', 'bg-green-100 text-green-800');
+            updateSyncStatus('Ready. Periodic sync started (5s interval).', 'bg-green-100 text-green-800');
         }
 
         // Run initialization when the page is ready
